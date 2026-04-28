@@ -30,25 +30,69 @@ def get_vectorstore():
 # 3. STREAMLIT UI & CHAT LOGIC
 # ==========================================
 def main():
-    st.title("MediBot 🩺")
-    st.caption("Powered by PubMed/API India & NVIDIA NIM")
+    # 1. 🎨 THEME-AWARE CSS (No hardcoded colors!)
+    st.markdown("""
+        <style>
+        /* Smooth Sidebar Divider */
+        [data-testid="stSidebar"] {
+            border-right: 1px solid rgba(128, 128, 128, 0.2);
+        }
+        
+        /* Rounded Chat Input Box */
+        [data-testid="stChatInput"] {
+            border-radius: 20px !important;
+            border: 1px solid rgba(128, 128, 128, 0.3) !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+    # 2. 🌟 NATIVE HEADER (Looks good in both Dark & Light mode)
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.markdown("<h1 style='text-align: center; color: #3b82f6;'>MediBot 🩺</h1>", unsafe_allow_html=True)
+    
+    st.markdown("<p style='text-align: center; opacity: 0.8; font-size: 1.1em;'>Your AI Specialist for Diabetes, Hypertension & COVID-19</p>", unsafe_allow_html=True)
+    st.divider()
+
+    # 3. 📱 SIDEBAR STYLING
+    with st.sidebar:
+        st.image("https://cdn-icons-png.flaticon.com/512/2966/2966327.png", width=100)
+        st.header("💡 Ask Me About")
+        
+        st.markdown("""
+        - 🩸 **Diabetes:** Diet, Insulin, Sugar Spikes
+        - 🫀 **Hypertension:** BP Management, Stress
+        - 🦠 **COVID-19:** Recovery, Symptoms, Immunity
+        """)
+        
+        st.divider()
+        st.info("📚 Trained strictly on verified PubMed clinical research.")
+        st.caption("Developed for educational & research purposes.")
+
+    # ... YAHAN SE BAAKI KA CHAT HISTORY WALA CODE SAME RAHEGA ...
 
     # Initialize chat history
     if 'messages' not in st.session_state:
         st.session_state.messages = []
+        # Add a welcoming first message from the bot
+        st.session_state.messages.append({
+            'role': 'assistant', 
+            'content': "Hello! I am MediBot. I specialize in answering questions about **Diabetes, Hypertension, and COVID-19** based on clinical research. How can I help you today?"
+        })
 
-    # Display previous chat messages
+    # Display previous chat messages with AVATARS
     for message in st.session_state.messages:
-        st.chat_message(message['role']).markdown(message['content'])
+        # User gets a person icon, Bot gets a stethoscope/robot icon
+        avatar_icon = "👤" if message['role'] == 'user' else "🩺"
+        st.chat_message(message['role'], avatar=avatar_icon).markdown(message['content'])
 
     # The Chat Input Box
     prompt = st.chat_input("Ask a medical question...")
 
-    # YAHAN SE INDENTATION SAHI KI GAYI HAI
     if prompt:
-        # Show user message instantly
-        st.chat_message('user').markdown(prompt)
-        st.session_state.messages.append({'role':'user', 'content': prompt})
+        # Show user message instantly with Avatar
+        st.chat_message('user', avatar="👤").markdown(prompt)
+        st.session_state.messages.append({'role': 'user', 'content': prompt})
 
         try: 
             vectorstore = get_vectorstore()
@@ -56,27 +100,34 @@ def main():
                 st.error("Failed to load the database.")
                 return
 
-            with st.spinner("Searching PubMed & API India records..."):
+            # Use a custom spinner
+            with st.spinner("🤖 MediBot is scanning clinical records..."):
                 
-                # FIX: Retriever ko define karna zaruri tha
                 retriever = vectorstore.as_retriever(search_kwargs={'k': 3})
                 docs = retriever.invoke(prompt)
                 
-                # Context aur Unique Links collect karein
                 context = ""
                 sources = set() 
                 
                 for doc in docs:
                     context += doc.page_content + "\n\n"
-                    
-                    # FIX: str() aur .strip() lagaya taaki koi hidden space na rahe
-                    raw_url = doc.metadata.get('source', 'Unknown Source')
-                    url = str(raw_url).strip() 
-                    
+                    url = str(doc.metadata.get('source', 'Unknown Source')).strip()
                     sources.add(url)
 
-                # NVIDIA API Prompt
-                final_prompt = f"Context: {context}\nQuestion: {prompt}\nAnswer directly based on context."
+                final_prompt = f"""
+                You are an expert Medical AI assistant strictly specialized in Diabetes, Hypertension, and COVID-19.
+                Use the following retrieved context to answer the user's question.
+                
+                CRITICAL RULES:
+                1. If the user asks about a disease other than Diabetes, Hypertension, or COVID-19, politely say: "I am a specialized bot trained only on Diabetes, Hypertension, and COVID-19. I cannot answer queries about other conditions."
+                2. Do not mix up the treatments or symptoms of the three diseases.
+                3. If the answer is not in the context, say you don't know. Do not guess.
+
+                Context: {context}
+                Question: {prompt}
+
+                Answer directly, professionally, and provide structured points if necessary.
+                """
 
                 response = client.chat.completions.create(
                     model="meta/llama-3.1-8b-instruct", 
@@ -86,17 +137,17 @@ def main():
 
                 result_text = response.choices[0].message.content
 
-                # Clickable Links Section
-                link_section = "\n\n**🔗 Verified Sources:**\n"
+                # Styled Links Section
+                link_section = "\n\n---\n**🔗 Verified Sources:**\n"
                 for link in sources:
                     if link != 'Unknown Source':
-                        link_section += f"- [View Original Research/Article]({link})\n"
+                        link_section += f"- [View Original Research on PubMed]({link})\n"
 
                 final_output = result_text + link_section
 
-            # Final Answer UI mein dikhayein
-            st.chat_message('assistant').markdown(final_output)
-            st.session_state.messages.append({'role':'assistant', 'content': final_output})
+            # Final Answer UI with Avatar
+            st.chat_message('assistant', avatar="🩺").markdown(final_output)
+            st.session_state.messages.append({'role': 'assistant', 'content': final_output})
 
         except Exception as e:
             st.error(f"Error: {str(e)}")
